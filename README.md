@@ -42,6 +42,84 @@ Identity stays hidden unless the patient agreed to share it, and revealing it is
 
 ---
 
+---
+
+## How a check travels
+
+```mermaid
+flowchart LR
+    A["Patient<br/>at home"] --> B["4 guided photos<br/>both soles, both insteps"]
+    B --> C["8 red flag questions<br/>+ optional glucose"]
+    C --> D{"Khatwa triage<br/>rules + AI"}
+    D -->|green| E["Keep checking daily"]
+    D -->|amber| F["Consent, then send"]
+    D -->|red| F
+    F --> G["Clinician queue<br/>red first"]
+    G --> H["Clinician confirms<br/>or overrides the level"]
+    H --> I["Orientation<br/>home / SSB / hospital"]
+    I --> J["Decision returns<br/>to the patient"]
+    I --> K["FHIR R4 bundle<br/>to the hospital system"]
+```
+
+## The two layers that decide the level
+
+The rules can raise the level. They can never lower it. That is the whole safety design in one line.
+
+```mermaid
+flowchart TD
+    P["Photos + answers + risk category"] --> AI["AI layer<br/>Gemini multimodal"]
+    P --> R["Clinical rules<br/>deterministic, offline"]
+    AI -->|"level, findings, confidence"| M{"Merge<br/>keep the higher level"}
+    R -->|"open wound, infection signs,<br/>insensate foot, critical glucose"| M
+    M --> OUT["Triage result<br/>green / amber / red"]
+    AI -.->|"no key or no network"| SKIP["AI skipped<br/>report says so"]
+    SKIP --> R
+```
+
+## What is inside the app
+
+```mermaid
+flowchart TB
+    subgraph UI["Screens"]
+        S1["Guided capture"]
+        S2["Questionnaire"]
+        S3["Report"]
+        S4["Clinician queue"]
+        S5["Risk profile"]
+    end
+    subgraph DATA["Data layer"]
+        D1["auth_store<br/>accounts, PIN, lockout"]
+        D2["crypto_box<br/>encryption at rest"]
+        D3["case_store<br/>cases, consent, audit trail"]
+        D4["rule_engine"]
+        D5["ai_gateway"]
+        D6["fhir_export"]
+    end
+    subgraph OUTSIDE["Outside the phone"]
+        X1["Gemini API"]
+        X2["Hospital system<br/>FHIR R4"]
+    end
+    UI --> DATA
+    D5 --> X1
+    D6 --> X2
+    D1 -->|"PIN unlocks the key"| D2
+    D2 --> D3
+```
+
+## Who can see what
+
+```mermaid
+flowchart LR
+    PAT["Patient"] -->|"own cases only"| STORE["Encrypted store<br/>on the device"]
+    DOC["Clinician"] -->|"submitted cases"| STORE
+    STORE -.->|"no PIN, no key"| LOCKED["Unreadable<br/>ciphertext"]
+    DOC --> MASK{"Patient consented<br/>to be named?"}
+    MASK -->|no| INIT["Initials + case number"]
+    MASK -->|yes| NAME["Full name"]
+    INIT -->|"reveal is logged"| AUDIT["Access trail<br/>who, what, when"]
+    NAME --> AUDIT
+```
+
 ## The details that make it usable
 
 - **Guided camera**: the screen dims everything except a foot-shaped outline, the outline breathes while you frame and locks green when the photo lands, and a ring around the shutter fills one segment per position. Four positions: both soles, both insteps.
